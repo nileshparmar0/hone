@@ -10,48 +10,60 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+interface LinqHandle {
+  handle?: string;
+  id?: string;
+  is_me?: boolean;
+  service?: string;
+  status?: string;
+}
+
+interface LinqMessagePart {
+  type: string;
+  value?: string;
+  text?: string;
+}
+
 interface LinqWebhookEvent {
   api_version?: string;
   webhook_version?: string;
   event_type: string;
   event_id: string;
   created_at?: string;
-  message?: {
+  trace_id?: string;
+  partner_id?: string;
+  data?: {
     id?: string;
-    chat_id?: string;
-    text?: string;
-    parts?: Array<{ type: string; value?: string; text?: string }>;
-    sender_handle?: {
-      handle?: string;
+    chat?: {
       id?: string;
-      is_me?: boolean;
-      service?: string;
+      is_group?: boolean;
+      owner_handle?: LinqHandle;
     };
+    direction?: string;
+    parts?: LinqMessagePart[];
+    sender_handle?: LinqHandle;
     sent_at?: string;
     service?: string;
     reply_to?: string | null;
+    idempotency_key?: string | null;
   };
 }
 
-function extractInboundText(event: LinqWebhookEvent): { text: string; from: string | null; messageId: string | null } {
-  const msg = event.message;
-  if (!msg) return { text: '', from: null, messageId: null };
+function extractInboundText(event: LinqWebhookEvent): { text: string; from: string | null; messageId: string | null; chatId: string | null } {
+  const data = event.data;
+  if (!data) return { text: '', from: null, messageId: null, chatId: null };
 
-  const from = msg.sender_handle?.handle ?? null;
-  const messageId = msg.id ?? null;
+  const from = data.sender_handle?.handle ?? null;
+  const messageId = data.id ?? null;
+  const chatId = data.chat?.id ?? null;
 
-  let text = '';
-  if (msg.text) {
-    text = msg.text;
-  } else if (msg.parts) {
-    text = msg.parts
-      .filter((p) => p.type === 'text')
-      .map((p) => p.value ?? p.text ?? '')
-      .join('\n')
-      .trim();
-  }
+  const text = (data.parts ?? [])
+    .filter((p) => p.type === 'text')
+    .map((p) => p.value ?? p.text ?? '')
+    .join('\n')
+    .trim();
 
-  return { text, from, messageId };
+  return { text, from, messageId, chatId };
 }
 
 async function processInbound(event: LinqWebhookEvent, traceId: string | null): Promise<void> {
@@ -69,7 +81,7 @@ async function processInbound(event: LinqWebhookEvent, traceId: string | null): 
     sessionId: (await getActiveSession(user.id))?.id ?? null,
     eventId: event.event_id,
     linqMessageId: messageId,
-    parts: event.message?.parts ?? [{ type: 'text', value: text }],
+    parts: event.data?.parts ?? [{ type: 'text', value: text }],
     traceId,
   });
 
