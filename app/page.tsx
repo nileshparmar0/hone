@@ -7,7 +7,7 @@ export default function Home() {
           An iMessage practice partner for software engineers. Text the number, get a problem, talk through your approach.
         </p>
         <p className="text-zinc-600 text-sm font-mono">
-          Built on Linq · Submitted by Nilesh Birla
+          Built on Linq · Submitted by Nilesh Parmar
         </p>
       </div>
     </main>
