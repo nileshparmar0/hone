@@ -56,6 +56,8 @@ iPhone / Android
 
 The whole system is one Next.js app on Vercel. Webhook handler, agent, dashboard, and cron all share the same deployment, same env, same logs.
 
+---
+
 ## Stack
 
 | Layer | Choice | Why |
