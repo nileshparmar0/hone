@@ -38,9 +38,10 @@ function extractInboundText(event: LinqWebhookEvent): { text: string; from: stri
 }
 
 async function processInbound(event: LinqWebhookEvent, traceId: string | null): Promise<void> {
+  console.log('[webhook] raw event', JSON.stringify(event, null, 2));
   const { text, from, messageId } = extractInboundText(event);
   if (!from || !messageId) {
-    console.warn('[webhook] missing from or messageId', { eventId: event.event_id });
+    console.warn('[webhook] missing from or messageId', { eventId: event.event_id, eventType: event.event_type });
     return;
   }
 
