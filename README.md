@@ -29,30 +29,32 @@ The use case is intentionally on-brand for what Linq is building. Long-running, 
 ---
 
 ## Architecture
+
+```
 iPhone / Android
-│
-│  SMS / iMessage / RCS
-▼
-Linq API ──► message.received webhook ──► Vercel serverless function
-│
-├── HMAC signature verification
-├── Idempotency on event_id
-│
-├──► Gemini 2.5 Flash agent loop
-│       (tool use: pick_problem,
-│        give_hint, reveal_solution,
-│        get_context, close_session)
-│
-├──► Neon Postgres
-│       (users, problems, sessions,
-│        messages)
-│
-└──► Linq /chats ──► reply to user
-Vercel Cron (daily 9am ET) ──► /api/cron/daily ──► fan-out nudges to active users
+       │
+       │  SMS / iMessage / RCS
+       ▼
+   Linq API ──► message.received webhook ──► Vercel serverless function
+                                                   │
+                                                   ├── HMAC signature verification
+                                                   ├── Idempotency on event_id
+                                                   │
+                                                   ├──► Gemini 2.5 Flash agent loop
+                                                   │       (tool use: pick_problem,
+                                                   │        give_hint, reveal_solution,
+                                                   │        get_context, close_session)
+                                                   │
+                                                   ├──► Neon Postgres
+                                                   │       (users, problems, sessions,
+                                                   │        messages)
+                                                   │
+                                                   └──► Linq /chats ──► reply to user
+
+   Vercel Cron (daily 9am ET) ──► /api/cron/daily ──► fan-out nudges to active users
+```
 
 The whole system is one Next.js app on Vercel. Webhook handler, agent, dashboard, and cron all share the same deployment, same env, same logs.
-
----
 
 ## Stack
 
