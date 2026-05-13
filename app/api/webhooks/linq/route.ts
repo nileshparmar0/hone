@@ -11,30 +11,47 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 interface LinqWebhookEvent {
-  event_id: string;
+  api_version?: string;
+  webhook_version?: string;
   event_type: string;
-  occurred_at?: string;
-  data: {
-    message?: {
+  event_id: string;
+  created_at?: string;
+  message?: {
+    id?: string;
+    chat_id?: string;
+    text?: string;
+    parts?: Array<{ type: string; value?: string; text?: string }>;
+    sender_handle?: {
+      handle?: string;
       id?: string;
-      from?: string;
-      to?: string[];
-      parts?: Array<{ type: string; value?: string }>;
-      chat_id?: string;
+      is_me?: boolean;
+      service?: string;
     };
-    chat?: {
-      id?: string;
-      participants?: string[];
-    };
+    sent_at?: string;
+    service?: string;
+    reply_to?: string | null;
   };
 }
 
 function extractInboundText(event: LinqWebhookEvent): { text: string; from: string | null; messageId: string | null } {
-  const msg = event.data.message;
+  const msg = event.message;
   if (!msg) return { text: '', from: null, messageId: null };
-  const textParts = (msg.parts ?? []).filter((p) => p.type === 'text' && typeof p.value === 'string');
-  const text = textParts.map((p) => p.value).join('\n').trim();
-  return { text, from: msg.from ?? null, messageId: msg.id ?? null };
+
+  const from = msg.sender_handle?.handle ?? null;
+  const messageId = msg.id ?? null;
+
+  let text = '';
+  if (msg.text) {
+    text = msg.text;
+  } else if (msg.parts) {
+    text = msg.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => p.value ?? p.text ?? '')
+      .join('\n')
+      .trim();
+  }
+
+  return { text, from, messageId };
 }
 
 async function processInbound(event: LinqWebhookEvent, traceId: string | null): Promise<void> {
@@ -52,7 +69,7 @@ async function processInbound(event: LinqWebhookEvent, traceId: string | null): 
     sessionId: (await getActiveSession(user.id))?.id ?? null,
     eventId: event.event_id,
     linqMessageId: messageId,
-    parts: event.data.message?.parts ?? [],
+    parts: event.message?.parts ?? [{ type: 'text', value: text }],
     traceId,
   });
 
