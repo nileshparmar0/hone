@@ -4,7 +4,7 @@ import { sql, type User, type Problem, type Session } from './db';
 
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-2.5-flash-lite';
 const MAX_AGENT_TURNS = 6;
 
 const SYSTEM_PROMPT = `You are Hone, an iMessage-native practice partner for software engineers preparing for technical interviews.
