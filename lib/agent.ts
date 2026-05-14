@@ -1,10 +1,10 @@
-import { GoogleGenAI, Type, type FunctionDeclaration } from '@google/genai';
+import Groq from 'groq-sdk';
 import { env } from './env';
 import { sql, type User, type Problem, type Session } from './db';
 
-const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+const groq = new Groq({ apiKey: env.GROQ_API_KEY });
 
-const MODEL = 'gemini-2.5-flash-lite';
+const MODEL = 'llama-3.1-8b-instant';
 const MAX_AGENT_TURNS = 6;
 
 const SYSTEM_PROMPT = `You are Hone, an iMessage-native practice partner for software engineers preparing for technical interviews.
@@ -42,49 +42,67 @@ export interface AgentOutput {
 
 type ToolName = 'get_context' | 'pick_problem' | 'give_hint' | 'reveal_solution' | 'update_preferences' | 'close_session';
 
-const TOOLS: FunctionDeclaration[] = [
+const TOOLS = [
   {
-    name: 'get_context',
-    description: 'Fetch the users active session, the current problem (if any), and the last few messages exchanged. Always call this first.',
-    parameters: { type: Type.OBJECT, properties: {} },
+    type: 'function' as const,
+    function: {
+      name: 'get_context',
+      description: 'Fetch the users active session, the current problem, and the last few messages. Always call this first.',
+      parameters: { type: 'object', properties: {} },
+    },
   },
   {
-    name: 'pick_problem',
-    description: 'Pick a problem for the user based on optional topic and difficulty. Opens a new session.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        topic: { type: Type.STRING, description: 'arrays, strings, trees, graphs, stacks, design, etc. Omit to choose based on user preferences.' },
-        difficulty: { type: Type.STRING, description: 'One of easy, medium, hard. Omit to match users level.' },
+    type: 'function' as const,
+    function: {
+      name: 'pick_problem',
+      description: 'Pick a problem for the user. Opens a new session.',
+      parameters: {
+        type: 'object',
+        properties: {
+          topic: { type: 'string', description: 'arrays, strings, trees, graphs, stacks, design' },
+          difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
+        },
       },
     },
   },
   {
-    name: 'give_hint',
-    description: 'Return the next hint for the active sessions problem. Hints escalate.',
-    parameters: { type: Type.OBJECT, properties: {} },
+    type: 'function' as const,
+    function: {
+      name: 'give_hint',
+      description: 'Return the next hint for the active problem.',
+      parameters: { type: 'object', properties: {} },
+    },
   },
   {
-    name: 'reveal_solution',
-    description: 'Reveal the full solution and complexity for the active problem. Closes the session.',
-    parameters: { type: Type.OBJECT, properties: {} },
+    type: 'function' as const,
+    function: {
+      name: 'reveal_solution',
+      description: 'Reveal the full solution and close the session.',
+      parameters: { type: 'object', properties: {} },
+    },
   },
   {
-    name: 'update_preferences',
-    description: 'Update the users stored preferences.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        experience_level: { type: Type.STRING, description: 'One of easy, medium, hard.' },
-        preferred_topics: { type: Type.ARRAY, items: { type: Type.STRING } },
-        display_name: { type: Type.STRING },
+    type: 'function' as const,
+    function: {
+      name: 'update_preferences',
+      description: 'Update the users stored preferences.',
+      parameters: {
+        type: 'object',
+        properties: {
+          experience_level: { type: 'string', enum: ['easy', 'medium', 'hard'] },
+          preferred_topics: { type: 'array', items: { type: 'string' } },
+          display_name: { type: 'string' },
+        },
       },
     },
   },
   {
-    name: 'close_session',
-    description: 'Close the active session without revealing the solution.',
-    parameters: { type: Type.OBJECT, properties: {} },
+    type: 'function' as const,
+    function: {
+      name: 'close_session',
+      description: 'Close the active session without revealing the solution.',
+      parameters: { type: 'object', properties: {} },
+    },
   },
 ];
 
@@ -205,45 +223,58 @@ async function runTool(name: ToolName, input: Record<string, unknown>, user: Use
 }
 
 export async function runAgent({ user, userMessage }: AgentInput): Promise<AgentOutput> {
-  const contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> = [
-    { role: 'user', parts: [{ text: userMessage }] },
+  const messages: Array<Groq.Chat.Completions.ChatCompletionMessageParam> = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: userMessage },
   ];
   const toolCalls: string[] = [];
 
   for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
-    const response = await ai.models.generateContent({
+    const response = await groq.chat.completions.create({
       model: MODEL,
-      contents,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        tools: [{ functionDeclarations: TOOLS }],
-      },
+      messages,
+      tools: TOOLS,
+      tool_choice: 'auto',
+      max_tokens: 1024,
     });
 
-    const functionCalls = response.functionCalls ?? [];
+    const message = response.choices[0]?.message;
+    if (!message) {
+      return { replyText: 'Sorry, I lost my train of thought. Want to try again?', toolCalls };
+    }
 
-    if (functionCalls.length > 0) {
-      contents.push({
-        role: 'model',
-        parts: functionCalls.map((fc) => ({ functionCall: { name: fc.name, args: fc.args ?? {} } })),
+    const requestedTools = message.tool_calls ?? [];
+
+    if (requestedTools.length > 0) {
+      messages.push({
+        role: 'assistant',
+        content: message.content ?? null,
+        tool_calls: requestedTools.map((tc) => ({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.function.name, arguments: tc.function.arguments },
+        })),
       });
 
-      const responseParts: Array<Record<string, unknown>> = [];
-      for (const fc of functionCalls) {
-        toolCalls.push(fc.name as string);
-        const result = await runTool(fc.name as ToolName, (fc.args ?? {}) as Record<string, unknown>, user);
-        responseParts.push({
-          functionResponse: {
-            name: fc.name,
-            response: { result },
-          },
+      for (const tc of requestedTools) {
+        toolCalls.push(tc.function.name);
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+        } catch {
+          parsedArgs = {};
+        }
+        const result = await runTool(tc.function.name as ToolName, parsedArgs, user);
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(result),
         });
       }
-      contents.push({ role: 'user', parts: responseParts });
       continue;
     }
 
-    const replyText = (response.text ?? '').trim();
+    const replyText = (message.content ?? '').trim();
     return {
       replyText: replyText || 'Sorry, I lost my train of thought. Want to try again?',
       toolCalls,

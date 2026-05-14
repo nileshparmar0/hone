@@ -17,7 +17,7 @@ export const env = {
   LINQ_WEBHOOK_SECRET: required('LINQ_WEBHOOK_SECRET'),
   LINQ_FROM_NUMBER: required('LINQ_FROM_NUMBER'),
 
-  GEMINI_API_KEY: required('GEMINI_API_KEY'),
+  GROQ_API_KEY: required('GROQ_API_KEY'),
 
   DATABASE_URL: required('DATABASE_URL'),
 
