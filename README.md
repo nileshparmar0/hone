@@ -40,7 +40,7 @@ iPhone / Android
                                                    ├── HMAC signature verification
                                                    ├── Idempotency on event_id
                                                    │
-                                                   ├──► Gemini 2.5 Flash agent loop
+                                                   ├──► Groq Llama 3.1 8B agent loop
                                                    │       (tool use: pick_problem,
                                                    │        give_hint, reveal_solution,
                                                    │        get_context, close_session)
@@ -66,7 +66,7 @@ The whole system is one Next.js app on Vercel. Webhook handler, agent, dashboard
 | Language | TypeScript everywhere | Strict mode, no `any` |
 | Hosting | Vercel | Serverless functions for the webhook, Cron Jobs for daily nudges |
 | Database | Neon Postgres (HTTP driver) | Works in serverless without connection pooling drama |
-| LLM | Gemini 2.5 Flash with function calling | Fast inference matters — users wait on iMessage. Free tier was a nice bonus. |
+| LLM | Llama 3.1 8B on Groq (function calling) | Groq's LPU inference is genuinely fast — sub-second latency matters when users are waiting on iMessage. Generous free tier didn't hurt. |
 | Messaging | Linq Partner API v3 | The reason we're here |
 
 Maps directly to the role's listed stack (React/Next.js, Node, TypeScript) plus the cloud infra and API fluency in the nice-to-haves.
@@ -100,7 +100,7 @@ A few choices that aren't obvious from the code.
 
 **The Linq client is hand-rolled, not the official SDK.** ~100 lines of `fetch` with proper error typing and trace ID surfacing. Adds zero dependencies and demonstrates the integration explicitly. The SDK would have been faster to ship but lower signal in this context.
 
-**Gemini instead of Claude or GPT.** Free tier, fast inference, function calling is mature. The agent system prompt + tool definitions are model-agnostic — swapping providers is a 30-line diff.
+**Groq instead of OpenAI or Claude.** Speed and a 14k/day free tier. Groq runs Llama on custom LPU chips that deliver real-time inference at ~600 tokens/sec, which matters when the user is staring at "..." in iMessage. The agent system prompt + tool definitions are model-agnostic — swapping providers was a 30-line diff, which I actually did mid-build when Gemini's daily cap of 20 requests killed my testing.
 
 **Stateless agent, stateful database.** Each webhook is a fresh function invocation. The agent re-reads context every turn via `get_context` instead of relying on session memory. This is how real production agents work, not how tutorials show them.
 
